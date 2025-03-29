@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "737132298326",
+    "project_id": "exit-entry-system",
+    "storage_bucket": "exit-entry-system.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:737132298326:android:54f716c2c7bd294fc03bf7",
+        "android_client_info": {
+          "package_name": "com.example.exit_entry_system"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA2i45PjhhVureWCTT-pDBUHn2yyLxcPjc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
