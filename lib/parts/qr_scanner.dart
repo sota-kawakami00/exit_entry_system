@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:ai_barcode/ai_barcode.dart';
 import 'package:flutter/foundation.dart';
 import 'package:js/js.dart' if (dart.library.html) 'package:js/js.dart';
+import 'package:audioplayers/audioplayers.dart'; // インポートを追加
 
 // JSのjsQRライブラリが利用可能か確認する関数
 bool isJsQRAvailable() {
@@ -35,10 +36,12 @@ class QRScannerState extends State<QRScanner> with WidgetsBindingObserver, Singl
   DateTime? _lastScanTime;
   Timer? _scanCooldownTimer;
   String _statusMessage = 'QRコードをスキャンしてください';
+  String ADMIN_QR_CODE = "gex5j7bzuh";
   bool _isError = false;
   bool _isCameraInitialized = false;
   bool _mounted = true;
   bool _isJsQRAvailable = false;
+  final AudioPlayer _audioPlayer = AudioPlayer(); // オーディオプレーヤーを追加
 
   // アニメーション関連の変数
   late AnimationController _checkmarkController;
@@ -342,6 +345,7 @@ class QRScannerState extends State<QRScanner> with WidgetsBindingObserver, Singl
     _scanCooldownTimer?.cancel();
     _scanningTimer?.cancel();
     _checkmarkController.dispose(); // アニメーションコントローラーの破棄
+    _audioPlayer.dispose(); // オーディオプレーヤーの破棄
 
     // カメラプレビューの停止を try-catch で囲む
     try {
@@ -352,6 +356,16 @@ class QRScannerState extends State<QRScanner> with WidgetsBindingObserver, Singl
     }
 
     super.dispose();
+  }
+
+  // QRコード検出時に音を鳴らす関数
+  Future<void> _playDetectionSound() async {
+    try {
+      _addDebugLog("QRコード検出音を再生");
+      await _audioPlayer.play(AssetSource('sounds/qr_beep.mp3'));
+    } catch (e) {
+      _addDebugLog("音声再生エラー: $e");
+    }
   }
 
   // QRコードが検出された時の処理
@@ -390,6 +404,9 @@ class QRScannerState extends State<QRScanner> with WidgetsBindingObserver, Singl
         }
       }
     }
+
+    // QRコード検出時に音を鳴らす
+    _playDetectionSound();
 
     // 処理中フラグを設定
     _processingQRCode = true;
@@ -1035,8 +1052,12 @@ class QRScannerState extends State<QRScanner> with WidgetsBindingObserver, Singl
             width: double.infinity,
             height: double.infinity,
             child: _isCameraInitialized
-                ? PlatformAiBarcodeScannerWidget(
+                ? Transform(
+                  alignment: Alignment.center,
+                  transform: Matrix4.identity()..scale(-1.0, 1.0, 1.0),
+                child: PlatformAiBarcodeScannerWidget(
               platformScannerController: _scannerController,
+            ),
             )
                 : const Center(
               child: CircularProgressIndicator(),
