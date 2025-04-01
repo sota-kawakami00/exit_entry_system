@@ -71,6 +71,7 @@ class EntryLogModel {
   final String userName;
   final DateTime timestamp;
   final bool isEntry; // true for entry, false for exit
+  final String? note; // 備考フィールドを追加
 
   EntryLogModel({
     required this.id,
@@ -78,6 +79,7 @@ class EntryLogModel {
     required this.userName,
     required this.timestamp,
     required this.isEntry,
+    this.note, // オプショナルパラメータとして追加
   });
 
   // Create from Firestore document
@@ -88,6 +90,7 @@ class EntryLogModel {
       userName: map['userName'] as String? ?? '',
       timestamp: (map['timestamp'] as Timestamp).toDate(),
       isEntry: map['isEntry'] as bool? ?? true,
+      note: map['note'] as String?, // FirestoreからNoteフィールドを取得
     );
   }
 
@@ -98,6 +101,7 @@ class EntryLogModel {
       'userName': userName,
       'timestamp': timestamp,
       'isEntry': isEntry,
+      'note': note, // noteフィールドを追加
     };
   }
 }

@@ -45,6 +45,7 @@ dependencies:
   ai_barcode: ^3.2.7
   google_ml_kit: ^0.20.0
   audioplayers: ^6.4.0
+  fl_chart: ^0.66.0
 
 dev_dependencies:
   flutter_test:
