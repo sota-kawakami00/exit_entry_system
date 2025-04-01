@@ -43,6 +43,11 @@ class QRScannerState extends State<QRScanner> with WidgetsBindingObserver, Singl
   bool _isJsQRAvailable = false;
   final AudioPlayer _audioPlayer = AudioPlayer(); // オーディオプレーヤーを追加
 
+  // 同一ユーザースキャン制限のための新しい変数
+  Map<String, DateTime> _userScanTimes = {}; // QRコードごとに最後にスキャンした時間を記録
+  Duration _userCooldownDuration = Duration(minutes: 1); // 1分間のクールダウン
+  bool _showCrossMark = false; // ×マークを表示するかどうか
+
   // アニメーション関連の変数
   late AnimationController _checkmarkController;
   late Animation<double> _checkmarkAnimation;
@@ -51,6 +56,16 @@ class QRScannerState extends State<QRScanner> with WidgetsBindingObserver, Singl
   // デバッグログリスト
   List<String> _debugLogs = [];
   bool _showDebugPanel = false;
+
+  bool _isUserInCooldown(String qrCode) {
+    if (_userScanTimes.containsKey(qrCode)) {
+      final lastScanTime = _userScanTimes[qrCode]!;
+      final now = DateTime.now();
+      final difference = now.difference(lastScanTime);
+      return difference < _userCooldownDuration;
+    }
+    return false;
+  }
 
   // Firebaseの接続状態とデータ状態
   bool _isFirebaseConnected = false;
@@ -405,6 +420,40 @@ class QRScannerState extends State<QRScanner> with WidgetsBindingObserver, Singl
       }
     }
 
+    // ユーザーがクールダウン中かチェック
+    if (_isUserInCooldown(qrCode)) {
+      _addDebugLog("スキャン中断: ユーザーは1分間のクールダウン中");
+
+      // 検出音を鳴らす
+      _playDetectionSound();
+
+      // ×マークを表示
+      setState(() {
+        _showCrossMark = true;
+        _showCheckmark = false;
+        _isScanning = false;
+        _statusMessage = '重複防止のため、スキャンできません。1分後にお試しください';
+      });
+
+      // ×マークのアニメーション
+      _checkmarkController.reset();
+      _checkmarkController.forward();
+
+      // クールダウン後にスキャンを再開
+      _scanCooldownTimer?.cancel();
+      _scanCooldownTimer = Timer(const Duration(seconds: 3), () {
+        if (_mounted && mounted) {
+          setState(() {
+            _isScanning = true;
+            _showCrossMark = false;
+            _statusMessage = 'QRコードをスキャンしてください';
+          });
+        }
+      });
+
+      return;
+    }
+
     // QRコード検出時に音を鳴らす
     _playDetectionSound();
 
@@ -509,6 +558,9 @@ class QRScannerState extends State<QRScanner> with WidgetsBindingObserver, Singl
       }
 
       _addDebugLog("処理完了: ${user.name}が${isEntering ? '入室' : '退室'}しました");
+
+      //ユーザのスキャン時間を記録（クールダウン用）
+      _userScanTimes[qrCode] = DateTime.now();
 
       // チェックマークアニメーションを表示
       setState(() {
@@ -693,6 +745,7 @@ class QRScannerState extends State<QRScanner> with WidgetsBindingObserver, Singl
                     itemBuilder: (context, index) {
                       final user = _cachedUsers[index];
                       final isPresent = user.isPresent;
+                      final isInCooldown = _isUserInCooldown(user.qrCode);
 
                       return ListTile(
                         leading: CircleAvatar(
@@ -722,6 +775,23 @@ class QRScannerState extends State<QRScanner> with WidgetsBindingObserver, Singl
                               user.qrCode,
                               style: TextStyle(fontSize: 12),
                             ),
+                            if (isInCooldown) ...[
+                              SizedBox(width: 8),
+                              Icon(
+                                Icons.timer,
+                                size: 14,
+                                color: Colors.orange,
+                              ),
+                              SizedBox(width: 2),
+                              Text(
+                                'クールダウン中',
+                                style: TextStyle(
+                                  color: Colors.orange,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                         trailing: Container(
@@ -744,9 +814,19 @@ class QRScannerState extends State<QRScanner> with WidgetsBindingObserver, Singl
                           ),
                         ),
                         onTap: () {
-                          Navigator.of(context).pop();
-                          _addDebugLog("リストから選択されたユーザー: ${user.name}");
-                          _onQRCodeDetected(user.qrCode);
+                          if (isInCooldown) {
+                            // クールダウン中の場合は警告を表示
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('${user.name}は現在クールダウン中です（1分間の制限）'),
+                                backgroundColor: Colors.orange,
+                              ),
+                            );
+                          } else {
+                            Navigator.of(context).pop();
+                            _addDebugLog("リストから選択されたユーザー: ${user.name}");
+                            _onQRCodeDetected(user.qrCode);
+                          }
                         },
                       );
                     },
@@ -816,6 +896,22 @@ class QRScannerState extends State<QRScanner> with WidgetsBindingObserver, Singl
         duration: const Duration(seconds: 2),
       ),
     );
+
+    // 1分間のクールダウンについても通知
+    Timer(const Duration(milliseconds: 300), () {
+      if (!_mounted || !mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '$userNameは1分間のクールダウンに入りました',
+            style: const TextStyle(fontSize: 14),
+          ),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    });
   }
 
   // 手動でカメラを再起動するメソッド
@@ -856,6 +952,25 @@ class QRScannerState extends State<QRScanner> with WidgetsBindingObserver, Singl
       _addDebugLog("デバッグログをクリアしました");
     });
   }
+
+  // すべてのユーザーのクールダウンをリセット（デバッグ用）
+  void _resetAllCooldowns() {
+    setState(() {
+      _userScanTimes.clear();
+      _addDebugLog("すべてのユーザーのクールダウンをリセットしました");
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('すべてのクールダウンをリセットしました'),
+          backgroundColor: Colors.blue,
+        ),
+      );
+    }
+  }
+
+
 
   // デバッグパネル
   Widget _buildDebugPanel() {
@@ -928,6 +1043,11 @@ class QRScannerState extends State<QRScanner> with WidgetsBindingObserver, Singl
                     tooltip: 'ログをクリア',
                   ),
                   IconButton(
+                    icon: Icon(Icons.timer_off, color: Colors.white, size: 20),
+                    onPressed: _resetAllCooldowns,
+                    tooltip: 'クールダウンリセット',
+                  ),
+                  IconButton(
                     icon: Icon(Icons.close, color: Colors.white, size: 20),
                     onPressed: _toggleDebugPanel,
                     tooltip: 'パネルを閉じる',
@@ -937,6 +1057,7 @@ class QRScannerState extends State<QRScanner> with WidgetsBindingObserver, Singl
             ],
           ),
           Divider(color: Colors.white30),
+          // Firebase情報セクション
           // Firebase情報セクション
           Container(
             color: Colors.black45,
@@ -962,6 +1083,11 @@ class QRScannerState extends State<QRScanner> with WidgetsBindingObserver, Singl
                     '最終スキャン: $_lastScannedCode',
                     style: TextStyle(color: Colors.yellow, fontSize: 12),
                   ),
+                SizedBox(height: 4),
+                Text(
+                  'クールダウン中ユーザー: ${_userScanTimes.length}人',
+                  style: TextStyle(color: Colors.orange, fontSize: 12),
+                ),
               ],
             ),
           ),
@@ -1089,6 +1215,23 @@ class QRScannerState extends State<QRScanner> with WidgetsBindingObserver, Singl
               ),
               child: const Icon(
                 Icons.check,
+                color: Colors.white,
+                size: 140,
+              ),
+            ),
+          ),
+        if (_showCrossMark)
+          ScaleTransition(
+            scale: _checkmarkAnimation,
+            child: Container(
+              width: 200,
+              height: 200,
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.8),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.close,
                 color: Colors.white,
                 size: 140,
               ),
@@ -1241,6 +1384,43 @@ class QRScannerState extends State<QRScanner> with WidgetsBindingObserver, Singl
               ),
             ),
           ),
+        if (_showCrossMark)
+          Positioned(
+            bottom: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 8,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.9),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '重複防止のため、スキャンできません',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                  SizedBox(
+                    height: 4,
+                  ),
+                  Text(
+                    '１分後にお試しください。',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                    ),
+                  )
+                ],
+              ),
+            ),
+          )
       ],
     );
   }
