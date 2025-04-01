@@ -1,4 +1,5 @@
 import 'package:exit_entry_system/model/user_model.dart';
+import 'package:exit_entry_system/parts/add_qrcode_scanner.dart';
 import 'package:exit_entry_system/parts/qr_generator.dart';
 import 'package:exit_entry_system/service/firebase_service.dart';
 import 'package:flutter/material.dart';
@@ -98,17 +99,47 @@ class UserManagementScreenState extends State<UserManagementScreen> {
                   decoration: InputDecoration(
                     labelText: 'QRコード値',
                     hintText: '例: ABC123',
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.refresh),
-                      onPressed: () {
-                        // Generate random QR code
-                        final random = Random();
-                        final qrCode = List.generate(
-                          8,
-                              (_) => random.nextInt(10).toString(),
-                        ).join();
-                        qrCodeController.text = qrCode;
-                      },
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // QRコードスキャンボタン
+                        IconButton(
+                          icon: const Icon(Icons.qr_code_scanner),
+                          onPressed: () async {
+                            try {
+                              // QRコードスキャナーを呼び出す
+                              final String scannedCode = await Navigator.push(
+                                dialogContext,
+                                MaterialPageRoute(
+                                  builder: (context) => const AddQRScannerPage(),
+                                ),
+                              );
+
+                              // スキャン結果がnullでない場合、テキストフィールドに設定
+                              if (scannedCode.isNotEmpty) {
+                                qrCodeController.text = scannedCode;
+                              }
+                            } catch (e) {
+                              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                SnackBar(content: Text('QRコードのスキャンに失敗しました: $e')),
+                              );
+                            }
+                          },
+                        ),
+                        // 既存のランダム生成ボタン
+                        IconButton(
+                          icon: const Icon(Icons.refresh),
+                          onPressed: () {
+                            // Generate random QR code
+                            final random = Random();
+                            final qrCode = List.generate(
+                              8,
+                                  (_) => random.nextInt(10).toString(),
+                            ).join();
+                            qrCodeController.text = qrCode;
+                          },
+                        ),
+                      ],
                     ),
                   ),
                 ),
